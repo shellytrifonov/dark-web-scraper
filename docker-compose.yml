@@ -57,10 +57,10 @@ services:
       - "9050:9050"   # Tor SOCKS proxy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf --socks5 localhost:9050 https://check.torproject.org/api/ip || exit 1"]
-      interval: 5s
+      interval: 10s
       timeout: 10s
-      retries: 5
-      start_period: 20s
+      retries: 10
+      start_period: 150s
     networks:
       - darkweb_network
 
