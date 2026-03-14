@@ -1,0 +1,217 @@
+version: "3.9"
+
+services:
+  # ===========================================
+  # PostgreSQL Database
+  # ===========================================
+  db:
+    image: postgres:15-alpine
+    container_name: darkweb_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-darkweb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-darkweb_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-darkweb_scraper}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-darkweb} -d ${POSTGRES_DB:-darkweb_scraper}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - darkweb_network
+
+  # ===========================================
+  # Redis (Celery Broker & Cache)
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: darkweb_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - darkweb_network
+
+  # ===========================================
+  # Tor Proxy (Privoxy + Tor)
+  # ===========================================
+  tor-proxy:
+    image: dperson/torproxy:latest
+    container_name: darkweb_tor
+    restart: unless-stopped
+    environment:
+      - LOCATION=US
+    ports:
+      - "8118:8118"   # Privoxy HTTP proxy
+      - "9050:9050"   # Tor SOCKS proxy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf --socks5 localhost:9050 https://check.torproject.org/api/ip || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - darkweb_network
+
+  # ===========================================
+  # Selenium Grid - Standalone Chrome
+  # ===========================================
+  selenium-chrome:
+    image: selenium/standalone-chrome:latest
+    container_name: darkweb_selenium
+    restart: unless-stopped
+    shm_size: "2gb"
+    environment:
+      - SE_NODE_MAX_SESSIONS=4
+      - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+      - SE_VNC_NO_PASSWORD=1
+    ports:
+      - "4444:4444"   # Selenium Grid Hub
+      - "7900:7900"   # noVNC (for debugging)
+    networks:
+      - darkweb_network
+
+  # ===========================================
+  # FastAPI Application
+  # ===========================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: darkweb_api
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-darkweb}:${POSTGRES_PASSWORD:-darkweb_secret}@db:5432/${POSTGRES_DB:-darkweb_scraper}
+      - REDIS_URL=redis://redis:6379/0
+      - SELENIUM_HUB_URL=http://selenium-chrome:4444/wd/hub
+      - TOR_PROXY_HOST=tor-proxy
+      - TOR_SOCKS_PORT=9050
+      - TOR_HTTP_PORT=8118
+      - ENVIRONMENT=development
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      selenium-chrome:
+        condition: service_started
+      tor-proxy:
+        condition: service_healthy
+    networks:
+      - darkweb_network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ===========================================
+  # Celery Worker
+  # ===========================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: darkweb_worker
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-darkweb}:${POSTGRES_PASSWORD:-darkweb_secret}@db:5432/${POSTGRES_DB:-darkweb_scraper}
+      - REDIS_URL=redis://redis:6379/0
+      - SELENIUM_HUB_URL=http://selenium-chrome:4444/wd/hub
+      - TOR_PROXY_HOST=tor-proxy
+      - TOR_SOCKS_PORT=9050
+      - TOR_HTTP_PORT=8118
+      - ENVIRONMENT=development
+    volumes:
+      - ./app:/app/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      selenium-chrome:
+        condition: service_started
+      tor-proxy:
+        condition: service_healthy
+    networks:
+      - darkweb_network
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2
+
+  # ===========================================
+  # Celery Beat (Scheduler)
+  # ===========================================
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: darkweb_beat
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-darkweb}:${POSTGRES_PASSWORD:-darkweb_secret}@db:5432/${POSTGRES_DB:-darkweb_scraper}
+      - REDIS_URL=redis://redis:6379/0
+      - ENVIRONMENT=development
+    volumes:
+      - ./app:/app/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - darkweb_network
+    command: celery -A app.core.celery_app beat --loglevel=info
+
+  # ===========================================
+  # Flower (Celery Monitoring)
+  # ===========================================
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: darkweb_flower
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - darkweb_network
+    command: celery -A app.core.celery_app flower --port=5555
+
+  # ===========================================
+  # Streamlit Dashboard UI
+  # ===========================================
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    container_name: darkweb_ui
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+    networks:
+      - darkweb_network
+
+networks:
+  darkweb_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
