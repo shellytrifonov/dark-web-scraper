@@ -43,6 +43,7 @@ class SmartScraper:
         selenium_hub_url: str,
         tor_host: str = "tor-proxy",
         tor_port: int = 8118,
+        tor_socks_port: int = 9050,
         timeout: int = 30,
         use_tor: bool = True,
         blacklisted_ips: Optional[List[str]] = None,
@@ -52,6 +53,7 @@ class SmartScraper:
         self.selenium_hub_url = selenium_hub_url
         self.tor_host = tor_host
         self.tor_port = tor_port
+        self.tor_socks_port = tor_socks_port
         self.timeout = timeout
         self.use_tor = use_tor
         self.blacklisted_ips = blacklisted_ips or []
@@ -72,6 +74,7 @@ class SmartScraper:
             use_tor=self.use_tor,
             tor_host=self.tor_host,
             tor_port=self.tor_port,
+            tor_socks_port=self.tor_socks_port,
             timeout=self.timeout,
             blacklisted_ips=self.blacklisted_ips,
             require_tor_exit_node=self.require_tor_exit_node,

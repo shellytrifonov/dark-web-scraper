@@ -49,6 +49,7 @@ class SeleniumScraper:
         use_tor: bool = True,
         tor_host: str = "tor-proxy",
         tor_port: int = 8118,
+        tor_socks_port: int = 9050,
         timeout: int = 30,
         blacklisted_ips: Optional[List[str]] = None,
         require_tor_exit_node: bool = True,
@@ -57,6 +58,7 @@ class SeleniumScraper:
         self.use_tor = use_tor
         self.tor_host = tor_host
         self.tor_port = tor_port
+        self.tor_socks_port = tor_socks_port
         self.timeout = timeout
         self.blacklisted_ips = blacklisted_ips or []
         self.require_tor_exit_node = require_tor_exit_node
@@ -128,12 +130,12 @@ class SeleniumScraper:
         options.add_argument(f"--user-agent={self._current_user_agent}")
 
         # ============================================
-        # Proxy Configuration (Tor)
+        # Proxy Configuration (Tor via SOCKS5)
         # ============================================
         if self.use_tor:
-            proxy_address = f"{self.tor_host}:{self.tor_port}"
-            options.add_argument(f"--proxy-server=http://{proxy_address}")
-            # Force all DNS through proxy
+            socks_address = f"{self.tor_host}:{self.tor_socks_port}"
+            options.add_argument(f"--proxy-server=socks5://{socks_address}")
+            # Force all DNS through the SOCKS5 proxy (resolves .onion natively)
             options.add_argument("--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE localhost, tor-proxy")
 
         # Chrome preferences for additional privacy
@@ -234,14 +236,12 @@ class SeleniumScraper:
         except (IPLeakError, AnonymityVerificationError):
             raise
         except Exception as e:
-            error_msg = f"Failed to verify anonymity: {str(e)}"
-            logger.error(error_msg)
-            if self.require_tor_exit_node:
-                raise AnonymityVerificationError(error_msg)
-            return {
-                "verified": False,
-                "error": str(e),
-            }
+            error_msg = f"Failed to verify anonymity (transient): {str(e)}"
+            logger.warning(error_msg)
+            # Transient errors (proxy unreachable, timeout, DNS) are NOT
+            # security violations — they should be retried, not aborted.
+            # Raise generic Exception so the task retry logic handles it.
+            raise RuntimeError(error_msg) from e
 
     def scrape(self, url: str, skip_verification: bool = False) -> Dict[str, Any]:
         """
