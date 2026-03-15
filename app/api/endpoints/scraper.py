@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, Any, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -39,7 +40,7 @@ class ScrapedSiteResponse(BaseModel):
     title: Optional[str]
     content: Optional[str]
     status_code: Optional[int]
-    scraped_at: str
+    scraped_at: datetime
 
     class Config:
         from_attributes = True

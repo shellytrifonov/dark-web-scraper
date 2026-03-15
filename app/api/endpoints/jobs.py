@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from celery.result import AsyncResult
@@ -31,9 +32,9 @@ class JobResponse(BaseModel):
     status: str
     error_message: Optional[str]
     retries: int
-    created_at: str
-    started_at: Optional[str]
-    completed_at: Optional[str]
+    created_at: datetime
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
 
     class Config:
         from_attributes = True
