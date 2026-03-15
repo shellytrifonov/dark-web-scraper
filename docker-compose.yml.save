@@ -78,8 +78,7 @@ services:
       - SE_VNC_NO_PASSWORD=1
     ports:
       - "4444:4444"   # Selenium Grid Hub
-      - "7900:7900"   # noVNC (for debugging)
-    networks:
+      - "7900:7900"   # noVNC (for debugging)    networks:
       - darkweb_network
 
   # ===========================================
@@ -132,9 +131,6 @@ services:
       - TOR_PROXY_HOST=tor-proxy
       - TOR_SOCKS_PORT=9050
       - TOR_HTTP_PORT=8118
-      - http_proxy=http://tor-proxy:8118
-      - https_proxy=http://tor-proxy:8118
-      - no_proxy=localhost,127.0.0.1,api,db,redis,selenium-chrome,tor-proxy,darkweb_worker,darkweb_api
       - ENVIRONMENT=development
     volumes:
       - ./app:/app/app
@@ -206,8 +202,6 @@ services:
     restart: unless-stopped
     ports:
       - "8501:8501"
-    environment:
-      - API_URL=http://api:8000
     depends_on:
       - api
     networks:

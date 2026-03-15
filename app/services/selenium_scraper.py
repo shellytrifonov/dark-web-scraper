@@ -134,7 +134,7 @@ class SeleniumScraper:
             proxy_address = f"{self.tor_host}:{self.tor_port}"
             options.add_argument(f"--proxy-server=http://{proxy_address}")
             # Force all DNS through proxy
-            options.add_argument("--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE localhost")
+            options.add_argument("--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE localhost, tor-proxy")
 
         # Chrome preferences for additional privacy
         prefs = {

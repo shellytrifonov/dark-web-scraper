@@ -104,33 +104,23 @@ def render_sidebar_health():
         anonymity = api_get("/health/anonymity")
         
         if health:
+            services = health.get("services", {})
+
             # Database
-            db_ok = health.get("database", {}).get("status") == "healthy"
-            st.sidebar.markdown(
-                render_status_indicator(db_ok, "Database"),
-                unsafe_allow_html=True
-            )
+            db_ok = services.get("database", {}).get("status") == "healthy"
+            st.sidebar.markdown(render_status_indicator(db_ok, "Database"), unsafe_allow_html=True)
             
             # Redis
-            redis_ok = health.get("redis", {}).get("status") == "healthy"
-            st.sidebar.markdown(
-                render_status_indicator(redis_ok, "Redis"),
-                unsafe_allow_html=True
-            )
+            redis_ok = services.get("redis", {}).get("status") == "healthy"
+            st.sidebar.markdown(render_status_indicator(redis_ok, "Redis"), unsafe_allow_html=True)
             
             # Selenium Grid
-            selenium_ok = health.get("selenium", {}).get("status") == "healthy"
-            st.sidebar.markdown(
-                render_status_indicator(selenium_ok, "Selenium Grid"),
-                unsafe_allow_html=True
-            )
+            selenium_ok = services.get("selenium_grid", {}).get("status") == "healthy"
+            st.sidebar.markdown(render_status_indicator(selenium_ok, "Selenium Grid"), unsafe_allow_html=True)
             
             # Tor Proxy
-            tor_ok = health.get("tor", {}).get("status") == "healthy"
-            st.sidebar.markdown(
-                render_status_indicator(tor_ok, "Tor Proxy"),
-                unsafe_allow_html=True
-            )
+            tor_ok = services.get("tor_proxy", {}).get("status") == "healthy"
+            st.sidebar.markdown(render_status_indicator(tor_ok, "Tor Proxy"), unsafe_allow_html=True)
         else:
             st.sidebar.error("Failed to fetch health status")
         
@@ -140,7 +130,7 @@ def render_sidebar_health():
         st.sidebar.markdown("## 🎭 Anonymity Status")
         
         if anonymity:
-            is_anonymous = anonymity.get("is_anonymous", False)
+            is_anonymous = anonymity.get("status") == "anonymous"
             tor_ip = anonymity.get("tor_ip", "Unknown")
             is_tor = anonymity.get("is_tor_exit_node", False)
             
