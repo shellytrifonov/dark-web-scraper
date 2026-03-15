@@ -167,6 +167,7 @@ class SeleniumScraper:
             command_executor=self.selenium_hub_url,
             options=options,
         )
+        # Default page load timeout (overridden per-scrape for .onion URLs)
         driver.set_page_load_timeout(self.timeout)
 
         # Execute CDP commands for additional WebRTC blocking and UA override
@@ -287,21 +288,27 @@ class SeleniumScraper:
             "anonymity": None,
         }
 
+        # Use a longer timeout for .onion sites (they route through Tor relays)
+        effective_timeout = self.timeout * 3 if ".onion" in url else self.timeout
+
         try:
             logger.info(f"Creating WebDriver for URL: {url}")
             driver = self._create_driver()
+            driver.set_page_load_timeout(effective_timeout)
 
             # Pre-scrape anonymity verification
             if not skip_verification and self.use_tor:
                 result["anonymity"] = self.verify_anonymity(driver)
 
-            logger.info(f"Navigating to: {url}")
-            driver.get(url)
+            logger.info(f"Navigating to: {url} (timeout={effective_timeout}s)")
+            timed_out = False
+            try:
+                driver.get(url)
+            except TimeoutException:
+                logger.warning(f"Page load timed out for {url}, capturing partial content")
+                timed_out = True
 
-            WebDriverWait(driver, self.timeout).until(
-                EC.presence_of_element_located((By.TAG_NAME, "body"))
-            )
-
+            # Extract whatever content Chrome has (full or partial)
             result["title"] = driver.title
             result["html"] = driver.page_source
 
@@ -324,9 +331,21 @@ class SeleniumScraper:
             except Exception:
                 pass
 
-            result["status_code"] = 200
+            # If we got meaningful content despite the timeout, consider it a success
+            has_content = len(result.get("content") or "") > 50 or len(result.get("html") or "") > 200
+            if timed_out and has_content:
+                result["status_code"] = 206  # Partial Content
+                logger.info(f"Captured partial content from {url}: {len(result.get('content', ''))} chars")
+            elif timed_out:
+                result["status_code"] = 408
+                raise TimeoutException(f"Timeout and no content from {url}")
+            else:
+                result["status_code"] = 200
 
             logger.info(f"Successfully scraped: {url}")
+
+        except (IPLeakError, AnonymityVerificationError):
+            raise
 
         except TimeoutException:
             logger.error(f"Timeout while scraping: {url}")
