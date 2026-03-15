@@ -2,6 +2,7 @@ import json
 import logging
 import random
 import re
+import socket
 from typing import Any, Dict, List, Optional
 
 from selenium import webdriver
@@ -133,10 +134,19 @@ class SeleniumScraper:
         # Proxy Configuration (Tor via SOCKS5)
         # ============================================
         if self.use_tor:
-            socks_address = f"{self.tor_host}:{self.tor_socks_port}"
-            options.add_argument(f"--proxy-server=socks5://{socks_address}")
-            # Force all DNS through the SOCKS5 proxy (resolves .onion natively)
-            options.add_argument("--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE localhost, tor-proxy")
+            # Resolve the tor proxy hostname to a numeric IP because Chrome
+            # inside the Selenium container uses its own DNS resolver which
+            # cannot resolve Docker-internal hostnames.
+            try:
+                tor_ip = socket.gethostbyname(self.tor_host)
+                logger.info(f"Resolved {self.tor_host} -> {tor_ip}")
+            except socket.gaierror:
+                tor_ip = self.tor_host
+                logger.warning(f"Could not resolve {self.tor_host}, using as-is")
+
+            options.add_argument(f"--proxy-server=socks5://{tor_ip}:{self.tor_socks_port}")
+            # Prevent DNS prefetch leaks; SOCKS5 handles DNS on the Tor side
+            options.add_argument("--dns-prefetch-disable")
 
         # Chrome preferences for additional privacy
         prefs = {
