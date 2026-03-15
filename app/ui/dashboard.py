@@ -5,6 +5,7 @@ Streamlit UI for controlling and monitoring the dark web scraper.
 """
 
 import time
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -446,10 +447,23 @@ def render_data_gallery():
                     # Raw HTML
                     html_content = site.get("html_content")
                     if html_content:
-                        with st.expander("�️ Raw HTML", expanded=False):
-                            st.code(html_content[:5000], language="html")
-                            if len(html_content) > 5000:
-                                st.caption(f"Showing first 5,000 of {len(html_content):,} characters")
+                        html_col, dl_col = st.columns([5, 1])
+                        with html_col:
+                            with st.expander("🖥️ Raw HTML", expanded=False):
+                                st.code(html_content[:5000], language="html")
+                                if len(html_content) > 5000:
+                                    st.caption(f"Showing first 5,000 of {len(html_content):,} characters")
+                        with dl_col:
+                            site_url = site.get("url", "page")
+                            safe_name = re.sub(r"[^\w\-.]", "_", site_url.split("//")[-1])[:60]
+                            st.download_button(
+                                label="⬇️ HTML",
+                                data=html_content.encode("utf-8"),
+                                file_name=f"{safe_name}.html",
+                                mime="text/html",
+                                key=f"dl_html_{site.get('id')}",
+                                use_container_width=True,
+                            )
                     
                     st.markdown("---")
     else:
