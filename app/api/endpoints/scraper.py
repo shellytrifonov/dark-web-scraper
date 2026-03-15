@@ -39,7 +39,16 @@ class ScrapedSiteResponse(BaseModel):
     url: str
     title: Optional[str]
     content: Optional[str]
+    html_content: Optional[str]
     status_code: Optional[int]
+    engine_used: Optional[str]
+    escalated: Optional[bool]
+    content_length: Optional[int]
+    html_size_bytes: Optional[int]
+    links_count: Optional[int]
+    links: Optional[str]
+    meta_description: Optional[str]
+    response_time_ms: Optional[int]
     scraped_at: datetime
 
     class Config:

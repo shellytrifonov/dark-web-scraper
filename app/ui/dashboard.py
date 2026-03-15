@@ -334,7 +334,7 @@ def render_data_gallery():
         if len(sites) == 0:
             st.info("No scraped data yet. Launch a scrape to see results here!")
         else:
-            # Stats
+            # Stats row
             stats = api_get("/scraper/stats")
             if stats:
                 stat_cols = st.columns(4)
@@ -350,23 +350,106 @@ def render_data_gallery():
             
             st.markdown("---")
             
-            # Display sites in cards
-            for site in sites:
+            # Display sites as rich cards
+            for idx, site in enumerate(sites):
                 with st.container():
-                    st.markdown(f"### 🌐 {site.get('title', 'No Title')}")
+                    # Title row
+                    title = site.get("title") or "No Title"
+                    engine = site.get("engine_used") or "unknown"
+                    escalated = site.get("escalated", False)
+                    engine_badge = f"🔧 {engine.upper()}"
+                    if escalated:
+                        engine_badge += " (escalated)"
                     
+                    st.markdown(f"### 🌐 {title}")
+                    
+                    # URL
                     url = site.get("url", "N/A")
-                    st.markdown(f"**URL:** `{url}`")
+                    st.code(url, language=None)
                     
-                    status_code = site.get("status_code", "N/A")
-                    scraped_at = site.get("scraped_at", "N/A")
-                    st.markdown(f"**Status:** {status_code} | **Scraped:** {scraped_at}")
+                    # Meta description
+                    meta_desc = site.get("meta_description")
+                    if meta_desc:
+                        st.markdown(f"*{meta_desc}*")
                     
-                    content = site.get("content", "")
+                    # Metrics row
+                    m1, m2, m3, m4, m5 = st.columns(5)
+                    with m1:
+                        status_code = site.get("status_code", "N/A")
+                        color = "🟢" if status_code == 200 else "🔴"
+                        st.markdown(f"**{color} Status**\n\n`{status_code}`")
+                    with m2:
+                        st.markdown(f"**⚙️ Engine**\n\n`{engine_badge}`")
+                    with m3:
+                        content_len = site.get("content_length") or 0
+                        if content_len >= 1000:
+                            display_len = f"{content_len / 1000:.1f}K"
+                        else:
+                            display_len = str(content_len)
+                        st.markdown(f"**📝 Content**\n\n`{display_len} chars`")
+                    with m4:
+                        links_count = site.get("links_count") or 0
+                        st.markdown(f"**🔗 Links**\n\n`{links_count} found`")
+                    with m5:
+                        response_ms = site.get("response_time_ms")
+                        if response_ms is not None:
+                            if response_ms >= 1000:
+                                time_str = f"{response_ms / 1000:.1f}s"
+                            else:
+                                time_str = f"{response_ms}ms"
+                        else:
+                            time_str = "N/A"
+                        st.markdown(f"**⏱️ Speed**\n\n`{time_str}`")
+                    
+                    # HTML size + timestamp row
+                    info_col1, info_col2 = st.columns(2)
+                    with info_col1:
+                        html_bytes = site.get("html_size_bytes") or 0
+                        if html_bytes >= 1024 * 1024:
+                            size_str = f"{html_bytes / (1024*1024):.1f} MB"
+                        elif html_bytes >= 1024:
+                            size_str = f"{html_bytes / 1024:.1f} KB"
+                        else:
+                            size_str = f"{html_bytes} B"
+                        st.markdown(f"**HTML Size:** {size_str}")
+                    with info_col2:
+                        scraped_at = site.get("scraped_at", "N/A")
+                        if scraped_at and scraped_at != "N/A":
+                            try:
+                                dt = datetime.fromisoformat(str(scraped_at).replace("Z", "+00:00"))
+                                scraped_at = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+                            except Exception:
+                                pass
+                        st.markdown(f"**Scraped:** {scraped_at}")
+                    
+                    # Content preview
+                    content = site.get("content") or ""
                     if content:
-                        snippet = content[:500] + "..." if len(content) > 500 else content
-                        with st.expander("📄 Content Preview"):
-                            st.text(snippet)
+                        with st.expander("📄 Text Content", expanded=False):
+                            st.text(content)
+                    
+                    # Links found
+                    links_json = site.get("links")
+                    if links_json:
+                        try:
+                            import json
+                            link_list = json.loads(links_json)
+                            if link_list:
+                                with st.expander(f"🔗 Discovered Links ({len(link_list)})", expanded=False):
+                                    for link in link_list:
+                                        is_onion = ".onion" in str(link)
+                                        prefix = "🧅" if is_onion else "🔗"
+                                        st.markdown(f"- {prefix} `{link}`")
+                        except Exception:
+                            pass
+                    
+                    # Raw HTML
+                    html_content = site.get("html_content")
+                    if html_content:
+                        with st.expander("�️ Raw HTML", expanded=False):
+                            st.code(html_content[:5000], language="html")
+                            if len(html_content) > 5000:
+                                st.caption(f"Showing first 5,000 of {len(html_content):,} characters")
                     
                     st.markdown("---")
     else:

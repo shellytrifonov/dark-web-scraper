@@ -1,4 +1,6 @@
+import json
 import logging
+import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -22,6 +24,23 @@ logger = logging.getLogger(__name__)
 SYNC_DATABASE_URL = settings.DATABASE_URL.replace("+asyncpg", "")
 sync_engine = create_engine(SYNC_DATABASE_URL)
 SyncSession = sessionmaker(bind=sync_engine)
+
+
+def _extract_meta_description(html: str) -> Optional[str]:
+    """Extract meta description from raw HTML."""
+    if not html:
+        return None
+    import re
+    match = re.search(
+        r'<meta\s+[^>]*name=["\']description["\']\s+[^>]*content=["\']([^"\']*)["\']',
+        html, re.IGNORECASE
+    )
+    if not match:
+        match = re.search(
+            r'<meta\s+[^>]*content=["\']([^"\']*)["\'][^>]*name=["\']description["\']',
+            html, re.IGNORECASE
+        )
+    return match.group(1).strip()[:1024] if match else None
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -76,14 +95,31 @@ def scrape_url_task(
             min_content_length=settings.BS4_MIN_CONTENT_LENGTH,
         )
 
+        scrape_start = time.time()
         result = scraper.scrape(url, engine=engine)
+        scrape_duration_ms = int((time.time() - scrape_start) * 1000)
+
+        clean_content = result.get("clean_content") or result.get("content") or ""
+        html_raw = result.get("html") or ""
+        found_links = result.get("links", [])
+
+        # Extract meta description from HTML
+        meta_desc = _extract_meta_description(html_raw)
 
         scraped_site = ScrapedSite(
             url=url,
             title=result.get("title"),
-            content=result.get("clean_content") or result.get("content"),
-            html_content=result.get("html"),
+            content=clean_content,
+            html_content=html_raw,
             status_code=result.get("status_code"),
+            engine_used=result.get("engine_used"),
+            escalated=result.get("escalated", False),
+            content_length=len(clean_content),
+            html_size_bytes=len(html_raw.encode("utf-8")) if html_raw else 0,
+            links_count=len(found_links),
+            links=json.dumps(found_links[:100]),  # cap at 100 links
+            meta_description=meta_desc,
+            response_time_ms=scrape_duration_ms,
             scraped_at=datetime.utcnow(),
         )
         session.add(scraped_site)
@@ -98,10 +134,12 @@ def scrape_url_task(
             "success": True,
             "url": url,
             "title": result.get("title"),
-            "content_length": len(result.get("content", "")),
+            "content_length": len(clean_content),
             "scraped_site_id": scraped_site.id,
             "engine_used": result.get("engine_used"),
             "escalated": result.get("escalated", False),
+            "links_count": len(found_links),
+            "response_time_ms": scrape_duration_ms,
         }
 
     except (IPLeakError, AnonymityVerificationError) as e:

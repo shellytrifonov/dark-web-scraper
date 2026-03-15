@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -21,6 +21,17 @@ class ScrapedSite(Base, TimestampMixin):
     content_type: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     keywords: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     source: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+
+    # Scrape metadata
+    engine_used: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    escalated: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
+    content_length: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    html_size_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    links_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    links: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
+    meta_description: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    response_time_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
     scraped_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
