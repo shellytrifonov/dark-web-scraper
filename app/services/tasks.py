@@ -75,13 +75,20 @@ def scrape_url_task(
     session = SyncSession()
 
     try:
-        job = ScrapeJob(
-            celery_task_id=task_id,
-            target_url=url,
-            status=JobStatus.RUNNING.value,
-            started_at=datetime.utcnow(),
-        )
-        session.add(job)
+        # Reuse existing job on retries instead of creating duplicates
+        job = session.query(ScrapeJob).filter_by(celery_task_id=task_id).first()
+        if job:
+            job.status = JobStatus.RUNNING.value
+            job.error_message = None
+            job.retries = self.request.retries
+        else:
+            job = ScrapeJob(
+                celery_task_id=task_id,
+                target_url=url,
+                status=JobStatus.RUNNING.value,
+                started_at=datetime.utcnow(),
+            )
+            session.add(job)
         session.commit()
 
         scraper = SmartScraper(
@@ -167,18 +174,25 @@ def scrape_url_task(
     except Exception as e:
         logger.error(f"Scrape task {task_id} failed: {str(e)}")
 
+        will_retry = self.request.retries < self.max_retries
+
         try:
             job = session.query(ScrapeJob).filter_by(celery_task_id=task_id).first()
             if job:
-                job.status = JobStatus.FAILED.value
-                job.error_message = str(e)
-                job.retries = self.request.retries
-                job.completed_at = datetime.utcnow()
+                if will_retry:
+                    # Keep as RUNNING — the retry will pick it up
+                    job.error_message = f"Retry {self.request.retries + 1}/{self.max_retries}: {str(e)}"
+                    job.retries = self.request.retries
+                else:
+                    job.status = JobStatus.FAILED.value
+                    job.error_message = str(e)
+                    job.retries = self.request.retries
+                    job.completed_at = datetime.utcnow()
                 session.commit()
         except Exception:
             pass
 
-        if self.request.retries < self.max_retries:
+        if will_retry:
             raise self.retry(exc=e)
 
         return {
