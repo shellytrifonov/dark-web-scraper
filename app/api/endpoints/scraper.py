@@ -49,6 +49,7 @@ class ScrapedSiteResponse(BaseModel):
     links: Optional[str]
     meta_description: Optional[str]
     response_time_ms: Optional[int]
+    entities: Optional[dict] = None
     scraped_at: datetime
 
     class Config:

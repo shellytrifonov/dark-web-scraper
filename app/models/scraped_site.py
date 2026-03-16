@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -31,6 +32,9 @@ class ScrapedSite(Base, TimestampMixin):
     links: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
     meta_description: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     response_time_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Entity extraction & analysis results (structured JSON)
+    entities: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     scraped_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

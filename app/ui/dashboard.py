@@ -427,6 +427,95 @@ def render_data_gallery():
                                 pass
                         st.markdown(f"**Scraped:** {scraped_at}")
                     
+                    # Entity extraction tags
+                    entities = site.get("entities")
+                    if entities and entities.get("total_entities", 0) > 0:
+                        tag_parts = []
+                        wallets = entities.get("crypto_wallets", [])
+                        pgp_keys = entities.get("pgp_keys", [])
+                        emails = entities.get("emails", [])
+                        onion_links = entities.get("onion_links", [])
+                        if wallets:
+                            tag_parts.append(
+                                f'<span style="background:#b8860b;color:#fff;padding:2px 8px;'
+                                f'border-radius:12px;font-size:0.8em;margin-right:4px;">'
+                                f'💰 {len(wallets)} Crypto Wallet{"s" if len(wallets)!=1 else ""}</span>'
+                            )
+                        if pgp_keys:
+                            tag_parts.append(
+                                f'<span style="background:#2e7d32;color:#fff;padding:2px 8px;'
+                                f'border-radius:12px;font-size:0.8em;margin-right:4px;">'
+                                f'🔑 {len(pgp_keys)} PGP Key{"s" if len(pgp_keys)!=1 else ""}</span>'
+                            )
+                        if emails:
+                            tag_parts.append(
+                                f'<span style="background:#1565c0;color:#fff;padding:2px 8px;'
+                                f'border-radius:12px;font-size:0.8em;margin-right:4px;">'
+                                f'📧 {len(emails)} Email{"s" if len(emails)!=1 else ""}</span>'
+                            )
+                        if onion_links:
+                            tag_parts.append(
+                                f'<span style="background:#6a1b9a;color:#fff;padding:2px 8px;'
+                                f'border-radius:12px;font-size:0.8em;margin-right:4px;">'
+                                f'🧅 {len(onion_links)} Onion Link{"s" if len(onion_links)!=1 else ""}</span>'
+                            )
+                        if tag_parts:
+                            st.markdown(" ".join(tag_parts), unsafe_allow_html=True)
+
+                    # LLM analysis (if available)
+                    if entities and entities.get("llm_summary"):
+                        # Scam warning banner
+                        score = entities.get("llm_legitimacy_score")
+                        if score is not None and score < 30:
+                            st.markdown(
+                                '<div style="background:#c62828;color:#fff;padding:6px 12px;'
+                                'border-radius:8px;margin:4px 0;">⚠️ <b>Scam Warning</b> — '
+                                f'Legitimacy Score: {score}/100</div>',
+                                unsafe_allow_html=True,
+                            )
+                        with st.expander("🧠 AI Analysis", expanded=False):
+                            st.markdown(f"**Summary:** {entities.get('llm_summary')}")
+                            cat = entities.get("llm_category")
+                            if cat:
+                                st.markdown(f"**Category:** `{cat}`")
+                            if score is not None:
+                                color = "#4caf50" if score >= 60 else "#ff9800" if score >= 30 else "#f44336"
+                                st.markdown(
+                                    f"**Legitimacy:** <span style='color:{color};font-weight:bold;'>"
+                                    f"{score}/100</span>",
+                                    unsafe_allow_html=True,
+                                )
+                                reason = entities.get("llm_legitimacy_reason")
+                                if reason:
+                                    st.caption(reason)
+
+                    # Entity detail expander (regex results)
+                    if entities and entities.get("total_entities", 0) > 0:
+                        with st.expander(
+                            f"🔍 Extracted Entities ({entities.get('total_entities', 0)})",
+                            expanded=False,
+                        ):
+                            wallets = entities.get("crypto_wallets", [])
+                            if wallets:
+                                st.markdown("**💰 Crypto Wallets**")
+                                for w in wallets:
+                                    st.code(f"[{w['type']}] {w['address']}", language=None)
+                            pgp_keys = entities.get("pgp_keys", [])
+                            if pgp_keys:
+                                st.markdown(f"**🔑 PGP Keys ({len(pgp_keys)})**")
+                                for i, key in enumerate(pgp_keys):
+                                    st.code(key[:300] + ("..." if len(key) > 300 else ""), language=None)
+                            emails = entities.get("emails", [])
+                            if emails:
+                                st.markdown("**📧 Emails**")
+                                for e in emails:
+                                    st.markdown(f"- `{e}`")
+                            onion_links = entities.get("onion_links", [])
+                            if onion_links:
+                                st.markdown("**🧅 Onion Links Found in Content**")
+                                for link in onion_links:
+                                    st.markdown(f"- `{link}`")
+
                     # Content preview
                     content = site.get("content") or ""
                     if content:

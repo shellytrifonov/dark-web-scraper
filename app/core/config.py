@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     # Abort scraping if IP is not a verified Tor exit node
     REQUIRE_TOR_EXIT_NODE: bool = True
 
+    # Entity Extraction / LLM Analysis (optional)
+    LLM_API_KEY: str = ""
+    LLM_MODEL: str = "gpt-4o-mini"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

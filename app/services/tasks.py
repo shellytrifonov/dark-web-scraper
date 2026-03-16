@@ -18,6 +18,7 @@ from app.services.selenium_scraper import (
 )
 from app.services.smart_scraper import SmartScraper, ScrapeEngine
 from app.services.search_engines import search_dark_web, SEARCH_ENGINES
+from app.services.entity_extractor import EntityExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,16 @@ def scrape_url_task(
         # Extract meta description from HTML
         meta_desc = _extract_meta_description(html_raw)
 
+        # Entity extraction (regex always, LLM if API key provided)
+        extractor = EntityExtractor(
+            llm_api_key=settings.LLM_API_KEY or None,
+            llm_model=settings.LLM_MODEL,
+        )
+        entities = extractor.extract(clean_content, url=url)
+        logger.info(
+            f"Entity extraction for {url}: {entities.get('total_entities', 0)} entities found"
+        )
+
         scraped_site = ScrapedSite(
             url=url,
             title=result.get("title"),
@@ -128,6 +139,7 @@ def scrape_url_task(
             links=json.dumps(found_links[:100]),  # cap at 100 links
             meta_description=meta_desc,
             response_time_ms=scrape_duration_ms,
+            entities=entities,
             scraped_at=datetime.utcnow(),
         )
         session.add(scraped_site)
