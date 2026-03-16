@@ -717,6 +717,235 @@ def render_search_section():
             st.info("Failed to load search engines")
 
 
+def render_monitor_tab():
+    """Render the Site Pulse monitoring tab."""
+    st.markdown("## 💓 Site Pulse Monitor")
+
+    # --- Add new monitor ---
+    with st.expander("➕ Add URL to Monitor", expanded=False):
+        mc1, mc2, mc3 = st.columns([4, 1, 1])
+        with mc1:
+            new_url = st.text_input(
+                "URL", placeholder="http://example.onion", key="mon_new_url"
+            )
+        with mc2:
+            new_label = st.text_input("Label (optional)", key="mon_new_label")
+        with mc3:
+            new_freq = st.number_input(
+                "Check every (hours)", min_value=1, max_value=168, value=6, key="mon_new_freq"
+            )
+        if st.button("🚀 Start Monitoring", type="primary"):
+            if not new_url.strip():
+                st.error("Enter a URL")
+            else:
+                res = api_post("/monitor/", {
+                    "url": new_url.strip(),
+                    "label": new_label.strip() or None,
+                    "frequency_hours": int(new_freq),
+                })
+                if res:
+                    st.success(f"✅ Now monitoring `{new_url}`")
+                    st.rerun()
+                else:
+                    st.error("Failed to add monitor (URL may already be tracked)")
+
+    # --- List monitors ---
+    monitors = api_get("/monitor/")
+    if not monitors:
+        st.info("No monitored sites yet. Add one above to get started.")
+        return
+
+    # Refresh button
+    rc1, rc2 = st.columns([4, 1])
+    with rc2:
+        if st.button("🔄 Refresh", key="mon_refresh"):
+            st.rerun()
+
+    for mon in monitors:
+        mon_id = mon.get("id")
+        url = mon.get("url", "")
+        label = mon.get("label") or url
+        is_active = mon.get("is_active", True)
+        last_status = mon.get("last_status")
+        uptime_pct = mon.get("uptime_pct", 0)
+        total_checks = mon.get("total_checks", 0)
+        version_count = mon.get("version_count", 0)
+        last_change_at = mon.get("last_change_at")
+        last_change_summary = mon.get("last_change_summary")
+        last_checked = mon.get("last_checked_at")
+        freq = mon.get("frequency_hours", 6)
+
+        # Status indicator
+        if not is_active:
+            status_icon = "⏸️"
+            status_color = "#666"
+        elif last_status == "up":
+            status_icon = "🟢"
+            status_color = "#22c55e"
+        elif last_status in ("down", "error"):
+            status_icon = "🔴"
+            status_color = "#ef4444"
+        elif last_status == "timeout":
+            status_icon = "🟡"
+            status_color = "#f59e0b"
+        else:
+            status_icon = "⚪"
+            status_color = "#888"
+
+        # Card container
+        with st.container():
+            # Header row
+            h1, h2, h3, h4 = st.columns([3, 1, 1, 1])
+            with h1:
+                badge_html = f"{status_icon} **{label}**"
+                # Version badge
+                if last_change_at:
+                    try:
+                        change_dt = datetime.fromisoformat(
+                            str(last_change_at).replace("Z", "+00:00")
+                        )
+                        hours_ago = (datetime.utcnow() - change_dt.replace(tzinfo=None)).total_seconds() / 3600
+                        if hours_ago < 24:
+                            badge_html += (
+                                ' <span style="background:#f59e0b;color:#000;padding:2px 8px;'
+                                'border-radius:12px;font-size:0.75em;">🆕 New Version</span>'
+                            )
+                    except Exception:
+                        pass
+                st.markdown(badge_html, unsafe_allow_html=True)
+                st.caption(f"`{url}`")
+            with h2:
+                # Uptime percentage
+                up_color = "#22c55e" if uptime_pct >= 90 else "#f59e0b" if uptime_pct >= 50 else "#ef4444"
+                st.markdown(
+                    f"**Uptime**\n\n"
+                    f"<span style='color:{up_color};font-size:1.3em;font-weight:bold;'>"
+                    f"{uptime_pct}%</span>",
+                    unsafe_allow_html=True,
+                )
+            with h3:
+                st.markdown(f"**Versions**\n\n`{version_count}`")
+            with h4:
+                st.markdown(f"**Checks**\n\n`{total_checks}`")
+
+            # Info row
+            i1, i2, i3 = st.columns(3)
+            with i1:
+                checked_str = "Never"
+                if last_checked:
+                    try:
+                        dt = datetime.fromisoformat(str(last_checked).replace("Z", "+00:00"))
+                        checked_str = dt.strftime("%m/%d %H:%M UTC")
+                    except Exception:
+                        checked_str = str(last_checked)
+                st.caption(f"Last checked: {checked_str}")
+            with i2:
+                st.caption(f"Frequency: every {freq}h")
+            with i3:
+                if last_change_summary:
+                    st.caption(f"Last change: {last_change_summary}")
+
+            # Uptime bar (visual timeline from uptime records)
+            uptime_records = api_get(f"/monitor/{mon_id}/uptime?hours=168")
+            if uptime_records:
+                _render_uptime_bar(uptime_records)
+
+            # Action buttons
+            a1, a2, a3 = st.columns(3)
+            with a1:
+                if st.button("⚡ Check Now", key=f"mon_check_{mon_id}"):
+                    res = api_post(f"/monitor/{mon_id}/check", {})
+                    if res:
+                        st.success(f"Check queued (task: `{res.get('task_id')}`)")
+                    else:
+                        st.error("Failed to trigger check")
+            with a2:
+                new_active = not is_active
+                btn_label = "▶️ Activate" if not is_active else "⏸️ Pause"
+                if st.button(btn_label, key=f"mon_toggle_{mon_id}"):
+                    api_patch(f"/monitor/{mon_id}", {"is_active": new_active})
+                    st.rerun()
+            with a3:
+                if st.button("🗑️ Remove", key=f"mon_del_{mon_id}"):
+                    api_delete(f"/monitor/{mon_id}")
+                    st.rerun()
+
+            st.markdown("---")
+
+
+def _render_uptime_bar(records):
+    """Render a visual uptime bar from uptime records."""
+    if not records:
+        return
+
+    segments = []
+    for rec in records:
+        status = rec.get("status", "unknown")
+        changed = rec.get("content_changed", False)
+
+        if status == "up":
+            color = "#f59e0b" if changed else "#22c55e"
+            title_text = "Content changed" if changed else "Up"
+        elif status == "timeout":
+            color = "#f59e0b"
+            title_text = "Timeout"
+        elif status in ("down", "error"):
+            color = "#ef4444"
+            title_text = rec.get("error_message", status).replace('"', "'")[:60]
+        else:
+            color = "#555"
+            title_text = "Unknown"
+
+        checked = rec.get("checked_at", "")
+        try:
+            dt = datetime.fromisoformat(str(checked).replace("Z", "+00:00"))
+            ts = dt.strftime("%m/%d %H:%M")
+        except Exception:
+            ts = str(checked)
+
+        segments.append(
+            f'<div title="{ts}: {title_text}" style="'
+            f"display:inline-block;width:{max(4, 100 / len(records)):.1f}%;"
+            f'height:18px;background:{color};margin:0;border-radius:2px;"></div>'
+        )
+
+    bar_html = (
+        '<div style="display:flex;gap:1px;border-radius:6px;overflow:hidden;'
+        'margin:4px 0 8px 0;">' + "".join(segments) + "</div>"
+    )
+
+    # Legend
+    bar_html += (
+        '<div style="font-size:0.7em;color:#888;">'
+        '<span style="color:#22c55e;">■</span> Up &nbsp;'
+        '<span style="color:#f59e0b;">■</span> Changed/Timeout &nbsp;'
+        '<span style="color:#ef4444;">■</span> Down/Error'
+        "</div>"
+    )
+
+    st.markdown(bar_html, unsafe_allow_html=True)
+
+
+def api_patch(endpoint: str, data: dict) -> Optional[Dict]:
+    """Send a PATCH request to the API."""
+    try:
+        response = requests.patch(f"{API_BASE_URL}{endpoint}", json=data, timeout=10)
+        if response.status_code == 200:
+            return response.json()
+    except Exception:
+        pass
+    return None
+
+
+def api_delete(endpoint: str) -> bool:
+    """Send a DELETE request to the API."""
+    try:
+        response = requests.delete(f"{API_BASE_URL}{endpoint}", timeout=10)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
 def main():
     """Main application."""
     # Header
@@ -728,11 +957,12 @@ def main():
     render_sidebar_health()
     
     # Main content tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "🎯 Scraper",
         "📊 Jobs",
         "📚 Gallery",
-        "🔍 Search"
+        "🔍 Search",
+        "💓 Monitor",
     ])
     
     with tab1:
@@ -746,6 +976,9 @@ def main():
     
     with tab4:
         render_search_section()
+
+    with tab5:
+        render_monitor_tab()
     
     # Footer
     st.markdown("---")

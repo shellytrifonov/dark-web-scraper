@@ -27,4 +27,8 @@ celery_app.conf.beat_schedule = {
         "task": "app.services.tasks.check_scraper_status",
         "schedule": 60.0,
     },
+    "run-site-monitors": {
+        "task": "app.services.tasks.run_site_monitors",
+        "schedule": 300.0,  # every 5 minutes — dispatches only due monitors
+    },
 }

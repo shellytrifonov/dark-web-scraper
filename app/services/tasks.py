@@ -1,16 +1,18 @@
+import hashlib
 import json
 import logging
 import time
-from datetime import datetime
-from typing import Any, Dict, Optional
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
 from celery import shared_task
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
 from app.models.scraped_site import ScrapedSite
 from app.models.scrape_job import ScrapeJob, JobStatus
+from app.models.site_monitor import SiteMonitor, UptimeRecord
 from app.services.selenium_scraper import (
     SeleniumScraper,
     IPLeakError,
@@ -437,4 +439,253 @@ def search_dark_web_task(
                 driver.quit()
             except Exception:
                 pass
+        session.close()
+
+
+# ---------------------------------------------------------------------------
+# Content diff helpers
+# ---------------------------------------------------------------------------
+
+def _content_hash(html: str) -> str:
+    """SHA-256 hash of HTML content for change detection."""
+    return hashlib.sha256(html.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _compare_content(old_html: str, new_html: str) -> Dict[str, Any]:
+    """Compare two HTML snapshots and return a change summary."""
+    old_len = len(old_html)
+    new_len = len(new_html)
+    delta = new_len - old_len
+    pct = round(abs(delta) / max(old_len, 1) * 100, 1)
+    direction = "grew" if delta > 0 else "shrank" if delta < 0 else "unchanged"
+
+    return {
+        "changed": _content_hash(old_html) != _content_hash(new_html),
+        "size_delta_bytes": delta,
+        "summary": f"Content {direction} by {pct}% ({abs(delta):,} bytes)",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Site Pulse – periodic monitoring task
+# ---------------------------------------------------------------------------
+
+@shared_task(bind=True, max_retries=1, default_retry_delay=30)
+def monitor_site_task(
+    self,
+    monitor_id: int,
+    url: str,
+    use_tor: bool = True,
+    timeout: int = 30,
+) -> Dict[str, Any]:
+    """
+    Check a single monitored site: scrape it, record uptime,
+    detect content changes, and update the SiteMonitor record.
+    """
+    task_id = self.request.id
+    logger.info(f"Monitor check {task_id} for {url} (monitor_id={monitor_id})")
+
+    session = SyncSession()
+    scrape_start = time.time()
+
+    try:
+        monitor = session.query(SiteMonitor).filter_by(id=monitor_id).first()
+        if not monitor or not monitor.is_active:
+            logger.info(f"Monitor {monitor_id} inactive or missing, skipping")
+            return {"success": False, "reason": "monitor_inactive"}
+
+        # Scrape the site
+        scraper = SmartScraper(
+            selenium_hub_url=settings.SELENIUM_HUB_URL,
+            tor_host=settings.TOR_PROXY_HOST,
+            tor_port=settings.TOR_HTTP_PORT,
+            tor_socks_port=settings.TOR_SOCKS_PORT,
+            timeout=timeout,
+            use_tor=use_tor,
+            blacklisted_ips=settings.BLACKLISTED_IPS,
+            require_tor_exit_node=settings.REQUIRE_TOR_EXIT_NODE,
+            min_content_length=settings.BS4_MIN_CONTENT_LENGTH,
+        )
+
+        result = scraper.scrape(url, engine="auto")
+        response_ms = int((time.time() - scrape_start) * 1000)
+
+        html_raw = result.get("html") or ""
+        new_hash = _content_hash(html_raw) if html_raw else ""
+        status_code = result.get("status_code")
+
+        # Determine if site is up
+        site_status = "up"
+        if status_code and status_code >= 400:
+            site_status = "down"
+        elif status_code == 408:
+            site_status = "timeout"
+
+        # Content diff against previous version
+        content_changed = False
+        change_summary = None
+        size_delta = None
+
+        if monitor.last_content_hash and new_hash:
+            if new_hash != monitor.last_content_hash:
+                content_changed = True
+                # Fetch previous scraped record to compute diff summary
+                prev = (
+                    session.query(ScrapedSite)
+                    .filter_by(url=url)
+                    .order_by(desc(ScrapedSite.scraped_at))
+                    .first()
+                )
+                if prev and prev.html_content:
+                    diff = _compare_content(prev.html_content, html_raw)
+                    change_summary = diff["summary"]
+                    size_delta = diff["size_delta_bytes"]
+                else:
+                    change_summary = "New content detected (no previous HTML to compare)"
+
+        # Record uptime entry
+        uptime = UptimeRecord(
+            monitor_id=monitor_id,
+            url=url,
+            checked_at=datetime.utcnow(),
+            status=site_status,
+            status_code=status_code,
+            response_time_ms=response_ms,
+            content_changed=content_changed,
+            content_hash=new_hash,
+            change_summary=change_summary,
+            size_delta_bytes=size_delta,
+        )
+        session.add(uptime)
+
+        # Save scraped content (entity extraction included)
+        clean_content = result.get("clean_content") or result.get("content") or ""
+        found_links = result.get("links", [])
+        meta_desc = _extract_meta_description(html_raw)
+
+        extractor = EntityExtractor(
+            llm_api_key=settings.LLM_API_KEY or None,
+            llm_model=settings.LLM_MODEL,
+        )
+        entities = extractor.extract(clean_content, url=url)
+
+        scraped_site = ScrapedSite(
+            url=url,
+            title=result.get("title"),
+            content=clean_content,
+            html_content=html_raw,
+            status_code=status_code,
+            engine_used=result.get("engine_used"),
+            escalated=result.get("escalated", False),
+            content_length=len(clean_content),
+            html_size_bytes=len(html_raw.encode("utf-8")) if html_raw else 0,
+            links_count=len(found_links),
+            links=json.dumps(found_links[:100]),
+            meta_description=meta_desc,
+            response_time_ms=response_ms,
+            entities=entities,
+            scraped_at=datetime.utcnow(),
+        )
+        session.add(scraped_site)
+
+        # Update monitor record
+        monitor.last_checked_at = datetime.utcnow()
+        monitor.last_status = site_status
+        monitor.last_content_hash = new_hash
+        monitor.total_checks += 1
+        if site_status == "up":
+            monitor.successful_checks += 1
+        if content_changed:
+            monitor.version_count += 1
+            monitor.last_change_at = datetime.utcnow()
+            monitor.last_change_summary = change_summary
+
+        session.commit()
+
+        logger.info(
+            f"Monitor check {task_id} done: status={site_status}, "
+            f"changed={content_changed}, {response_ms}ms"
+        )
+
+        return {
+            "success": True,
+            "monitor_id": monitor_id,
+            "url": url,
+            "status": site_status,
+            "content_changed": content_changed,
+            "change_summary": change_summary,
+            "response_time_ms": response_ms,
+        }
+
+    except Exception as e:
+        response_ms = int((time.time() - scrape_start) * 1000)
+        logger.error(f"Monitor check {task_id} failed: {e}")
+
+        try:
+            monitor = session.query(SiteMonitor).filter_by(id=monitor_id).first()
+            if monitor:
+                monitor.last_checked_at = datetime.utcnow()
+                monitor.last_status = "error"
+                monitor.total_checks += 1
+
+            uptime = UptimeRecord(
+                monitor_id=monitor_id,
+                url=url,
+                checked_at=datetime.utcnow(),
+                status="error",
+                response_time_ms=response_ms,
+                error_message=str(e)[:500],
+            )
+            session.add(uptime)
+            session.commit()
+        except Exception:
+            pass
+
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=e)
+
+        return {"success": False, "monitor_id": monitor_id, "error": str(e)}
+
+    finally:
+        session.close()
+
+
+@shared_task
+def run_site_monitors() -> Dict[str, Any]:
+    """
+    Periodic Beat task: find all active monitors whose next check
+    is due and dispatch a monitor_site_task for each.
+    """
+    session = SyncSession()
+    try:
+        monitors = (
+            session.query(SiteMonitor)
+            .filter_by(is_active=True)
+            .all()
+        )
+
+        dispatched = []
+        now = datetime.utcnow()
+        for mon in monitors:
+            # Check if enough time has passed since last check
+            if mon.last_checked_at:
+                next_due = mon.last_checked_at + timedelta(hours=mon.frequency_hours)
+                if now < next_due:
+                    continue
+
+            task = monitor_site_task.delay(
+                monitor_id=mon.id,
+                url=mon.url,
+            )
+            dispatched.append({"monitor_id": mon.id, "url": mon.url, "task_id": task.id})
+            logger.info(f"Dispatched monitor check for {mon.url} (monitor_id={mon.id})")
+
+        return {
+            "checked_at": now.isoformat(),
+            "total_active": len(monitors),
+            "dispatched": len(dispatched),
+            "tasks": dispatched,
+        }
+
+    finally:
         session.close()
