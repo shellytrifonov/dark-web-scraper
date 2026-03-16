@@ -473,16 +473,14 @@ def render_data_gallery():
 def render_search_section():
     """Render the dark web search section."""
     st.markdown("## 🔍 Dark Web Search")
-    
+
     col1, col2 = st.columns([3, 1])
-    
     with col1:
         search_query = st.text_input(
             "Search Query",
             placeholder="Enter keywords to search dark web...",
             key="darkweb_search"
         )
-    
     with col2:
         max_results = st.number_input(
             "Max Results",
@@ -491,29 +489,131 @@ def render_search_section():
             value=50,
             key="max_results"
         )
-    
-    scrape_results = st.checkbox(
-        "Auto-scrape discovered URLs",
-        value=False,
-        help="Automatically queue scrape tasks for found .onion URLs"
-    )
-    
+
+    col_opt1, col_opt2 = st.columns(2)
+    with col_opt1:
+        scrape_results = st.checkbox(
+            "Auto-scrape discovered URLs",
+            value=False,
+            help="Automatically queue scrape tasks for all found .onion URLs"
+        )
+    with col_opt2:
+        auto_poll = st.checkbox(
+            "Wait for results automatically",
+            value=True,
+            help="Poll until search completes and show results inline"
+        )
+
     if st.button("🔎 Search Dark Web", type="primary"):
-        if not search_query:
+        if not search_query.strip():
             st.error("Please enter a search query")
         else:
             with st.spinner("Queueing search task..."):
                 result = api_post("/search/", {
                     "query": search_query,
-                    "max_results": max_results,
+                    "max_results": int(max_results),
                     "scrape_results": scrape_results,
                 })
-                
-                if result:
-                    st.success(f"✅ Search queued! Task ID: `{result.get('task_id')}`")
-                else:
-                    st.error("Failed to queue search task")
-    
+            if result:
+                task_id = result.get("task_id")
+                st.session_state["search_task_id"] = task_id
+                st.session_state["search_query_label"] = search_query
+                st.session_state["search_results"] = None
+                st.success(f"✅ Search queued — Task ID: `{task_id}`")
+                if auto_poll:
+                    # Poll up to ~150s (search takes ~80s in practice)
+                    poll_placeholder = st.empty()
+                    for attempt in range(30):
+                        time.sleep(5)
+                        poll_placeholder.info(f"⏳ Searching… ({(attempt + 1) * 5}s elapsed)")
+                        data = api_get(f"/search/results/{task_id}")
+                        if data and data.get("status") == "success":
+                            poll_placeholder.empty()
+                            st.session_state["search_results"] = data
+                            st.rerun()
+                            break
+                        elif data and data.get("status") == "failure":
+                            poll_placeholder.error(f"Search failed: {data.get('error')}")
+                            break
+                    else:
+                        poll_placeholder.warning(
+                            "Search is still running. Come back and click "
+                            "**'Check Results'** below when it completes (~80-120s total)."
+                        )
+            else:
+                st.error("Failed to queue search task")
+
+    # Manual check button when task is pending in session state
+    task_id = st.session_state.get("search_task_id")
+    if task_id and not st.session_state.get("search_results"):
+        if st.button("🔄 Check Results"):
+            data = api_get(f"/search/results/{task_id}")
+            if data and data.get("status") == "success":
+                st.session_state["search_results"] = data
+                st.rerun()
+            elif data and data.get("status") == "failure":
+                st.error(f"Search failed: {data.get('error')}")
+            else:
+                st.info(f"Search still {data.get('status', 'pending')}… try again in a few seconds.")
+
+    # Display results
+    results_data = st.session_state.get("search_results")
+    if results_data:
+        query_label = st.session_state.get("search_query_label", "")
+        results = results_data.get("results", [])
+        total = results_data.get("total_results", len(results))
+        scrape_ids = results_data.get("scrape_task_ids", [])
+
+        st.markdown(f"### Results for **'{query_label}'** — {total} URLs found")
+        if scrape_ids:
+            st.info(f"🕷️ {len(scrape_ids)} scrape tasks auto-queued")
+
+        if results:
+            # Group by source engine
+            sources = sorted(set(r.get("source", "Unknown") for r in results))
+            source_filter = st.multiselect(
+                "Filter by search engine",
+                options=sources,
+                default=sources,
+                key="search_source_filter"
+            )
+            filtered = [r for r in results if r.get("source") in source_filter]
+
+            st.markdown(f"*Showing {len(filtered)} of {total} results*")
+            for r in filtered:
+                link = r.get("link", "")
+                title = r.get("title") or link
+                source = r.get("source", "")
+                is_onion = ".onion" in link
+
+                badge = "🧅" if is_onion else "🌐"
+                with st.container():
+                    c1, c2 = st.columns([4, 1])
+                    with c1:
+                        st.markdown(f"{badge} **{title}**")
+                        st.caption(f"`{link}`")
+                    with c2:
+                        st.caption(f"*{source}*")
+                        if st.button("Scrape", key=f"scrape_{hash(link)}"):
+                            res = api_post("/scraper/scrape", {
+                                "url": link,
+                                "use_tor": True,
+                                "timeout": 30,
+                                "force_engine": "auto",
+                            })
+                            if res:
+                                st.success(f"Queued ✓")
+                            else:
+                                st.error("Failed")
+                st.divider()
+        else:
+            st.info("No results returned.")
+
+        if st.button("🗑️ Clear Results"):
+            st.session_state["search_results"] = None
+            st.session_state["search_task_id"] = None
+            st.rerun()
+
     # Show available search engines
     with st.expander("🔧 Available Search Engines"):
         engines = api_get("/search/engines")
