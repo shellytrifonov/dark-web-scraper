@@ -300,19 +300,37 @@ def search_dark_web_task(
     task_id = self.request.id
     logger.info(f"Starting dark web search task {task_id} for query: {query}")
 
-    scraper = SeleniumScraper(
-        selenium_hub_url=settings.SELENIUM_HUB_URL,
-        use_tor=True,
-        tor_host=settings.TOR_PROXY_HOST,
-        tor_port=settings.TOR_HTTP_PORT,
-        tor_socks_port=settings.TOR_SOCKS_PORT,
-        timeout=timeout,
-        blacklisted_ips=settings.BLACKLISTED_IPS,
-        require_tor_exit_node=settings.REQUIRE_TOR_EXIT_NODE,
-    )
-
+    session = SyncSession()
     driver = None
+
     try:
+        # Track search as a job so it appears in the Job Monitor
+        job = session.query(ScrapeJob).filter_by(celery_task_id=task_id).first()
+        if job:
+            job.status = JobStatus.RUNNING.value
+            job.error_message = None
+            job.retries = self.request.retries
+        else:
+            job = ScrapeJob(
+                celery_task_id=task_id,
+                target_url=f"search://{query}",
+                status=JobStatus.RUNNING.value,
+                started_at=datetime.utcnow(),
+            )
+            session.add(job)
+        session.commit()
+
+        scraper = SeleniumScraper(
+            selenium_hub_url=settings.SELENIUM_HUB_URL,
+            use_tor=True,
+            tor_host=settings.TOR_PROXY_HOST,
+            tor_port=settings.TOR_HTTP_PORT,
+            tor_socks_port=settings.TOR_SOCKS_PORT,
+            timeout=timeout,
+            blacklisted_ips=settings.BLACKLISTED_IPS,
+            require_tor_exit_node=settings.REQUIRE_TOR_EXIT_NODE,
+        )
+
         driver = scraper._create_driver()
 
         # Verify anonymity before searching
@@ -340,6 +358,17 @@ def search_dark_web_task(
             f"{len(results)} results, {len(child_task_ids)} scrape tasks queued"
         )
 
+        # Mark job complete
+        try:
+            job = session.query(ScrapeJob).filter_by(celery_task_id=task_id).first()
+            if job:
+                job.status = JobStatus.COMPLETED.value
+                job.completed_at = datetime.utcnow()
+                job.error_message = f"{len(results)} results found"
+                session.commit()
+        except Exception:
+            pass
+
         return {
             "success": True,
             "query": query,
@@ -350,6 +379,15 @@ def search_dark_web_task(
 
     except (IPLeakError, AnonymityVerificationError) as e:
         logger.critical(f"Search task {task_id} ABORTED: {str(e)}")
+        try:
+            job = session.query(ScrapeJob).filter_by(celery_task_id=task_id).first()
+            if job:
+                job.status = JobStatus.FAILED.value
+                job.error_message = f"SECURITY ABORT: {str(e)}"
+                job.completed_at = datetime.utcnow()
+                session.commit()
+        except Exception:
+            pass
         return {
             "success": False,
             "query": query,
@@ -359,7 +397,21 @@ def search_dark_web_task(
 
     except Exception as e:
         logger.error(f"Search task {task_id} failed: {str(e)}")
-        if self.request.retries < self.max_retries:
+        will_retry = self.request.retries < self.max_retries
+        try:
+            job = session.query(ScrapeJob).filter_by(celery_task_id=task_id).first()
+            if job:
+                if will_retry:
+                    job.error_message = f"Retry {self.request.retries + 1}/{self.max_retries}: {str(e)}"
+                    job.retries = self.request.retries
+                else:
+                    job.status = JobStatus.FAILED.value
+                    job.error_message = str(e)
+                    job.completed_at = datetime.utcnow()
+                session.commit()
+        except Exception:
+            pass
+        if will_retry:
             raise self.retry(exc=e)
         return {
             "success": False,
@@ -373,3 +425,4 @@ def search_dark_web_task(
                 driver.quit()
             except Exception:
                 pass
+        session.close()

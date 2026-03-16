@@ -282,9 +282,13 @@ def render_job_monitor():
                     
                     with cols[1]:
                         url = job.get("target_url", "N/A")
-                        if len(url) > 50:
-                            url = url[:50] + "..."
-                        st.markdown(f"**URL:** {url}")
+                        if url.startswith("search://"):
+                            query_term = url[len("search://"):]
+                            st.markdown(f"🔍 **Search:** `{query_term}`")
+                        else:
+                            if len(url) > 50:
+                                url = url[:50] + "..."
+                            st.markdown(f"**URL:** {url}")
                     
                     with cols[2]:
                         st.markdown(
