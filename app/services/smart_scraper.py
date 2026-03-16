@@ -139,6 +139,12 @@ class SmartScraper:
             IPLeakError: If blacklisted IP detected (Selenium path)
             AnonymityVerificationError: If Tor exit node check fails (Selenium path)
         """
+        if isinstance(engine, str):
+            try:
+                engine = ScrapeEngine(engine)
+            except ValueError:
+                engine = ScrapeEngine.AUTO
+
         logger.info(f"[Smart] Scraping {url} with engine={engine.value}")
 
         # ── Force BS4 ──
