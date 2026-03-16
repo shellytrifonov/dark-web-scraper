@@ -486,9 +486,26 @@ def monitor_site_task(
     logger.info(f"Monitor check {task_id} for {url} (monitor_id={monitor_id})")
 
     session = SyncSession()
+    job = None
     scrape_start = time.time()
 
     try:
+        # Track monitor checks in ScrapeJob so they appear in Job Monitor
+        job = session.query(ScrapeJob).filter_by(celery_task_id=task_id).first()
+        if job:
+            job.status = JobStatus.RUNNING.value
+            job.error_message = None
+            job.retries = self.request.retries
+        else:
+            job = ScrapeJob(
+                celery_task_id=task_id,
+                target_url=f"monitor://{url}",
+                status=JobStatus.RUNNING.value,
+                started_at=datetime.utcnow(),
+            )
+            session.add(job)
+        session.commit()
+
         monitor = session.query(SiteMonitor).filter_by(id=monitor_id).first()
         if not monitor or not monitor.is_active:
             logger.info(f"Monitor {monitor_id} inactive or missing, skipping")
@@ -602,6 +619,12 @@ def monitor_site_task(
 
         session.commit()
 
+        if job:
+            job.status = JobStatus.COMPLETED.value
+            job.completed_at = datetime.utcnow()
+            job.error_message = change_summary or f"status={site_status}"
+            session.commit()
+
         logger.info(
             f"Monitor check {task_id} done: status={site_status}, "
             f"changed={content_changed}, {response_ms}ms"
@@ -638,6 +661,12 @@ def monitor_site_task(
             )
             session.add(uptime)
             session.commit()
+
+            if job:
+                job.status = JobStatus.FAILED.value
+                job.error_message = str(e)[:500]
+                job.completed_at = datetime.utcnow()
+                session.commit()
         except Exception:
             pass
 
