@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from celery import shared_task
@@ -706,7 +706,7 @@ def run_site_monitors() -> Dict[str, Any]:
         )
 
         dispatched = []
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         for mon in monitors:
             # Check if enough time has passed since last check
             if mon.last_checked_at:

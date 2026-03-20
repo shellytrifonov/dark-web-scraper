@@ -21,7 +21,7 @@ def rotate_tor_circuit() -> bool:
     Control Port.
 
     Connects to TOR_PROXY_HOST:TOR_CONTROL_PORT, authenticates with
-    TOR_CONTROL_PASSWORD, sends the NEWNYM signal, then sleeps 3 seconds
+    TOR_CONTROL_PASSWORD, sends the NEWNYM signal, then sleeps 7 seconds
     to let the new circuit stabilise.
 
     Returns:
@@ -57,8 +57,8 @@ def rotate_tor_circuit() -> bool:
         sock.close()
 
         # Mandatory delay to let the new circuit establish
-        logger.info("NEWNYM signal sent – waiting 3 s for new circuit ...")
-        time.sleep(3)
+        logger.info("NEWNYM signal sent – waiting 7 s for new circuit ...")
+        time.sleep(7)
 
         logger.info("Tor circuit rotated successfully")
         return True
