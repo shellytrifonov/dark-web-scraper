@@ -75,8 +75,7 @@ Track .onion sites over time:
 - Stores version history with size deltas
 - Visual uptime bar in the dashboard
 
-![Monitor Tab](docs/screenshots/monitor-t<img width="1499" height="534" alt="Screenshot 2026-03-20 123311" src="https://github.com/user-attachments/assets/ead3cd2d-dc7f-4311-8bce-91c5235d16c1" />
-ab.png)
+<img width="1499" height="534" alt="Screenshot 2026-03-20 123311" src="https://github.com/user-attachments/assets/7c2656de-a2f0-4bc5-b2d9-07c730acb48c" />
 
 ### 4. Tor Circuit Rotation
 
@@ -191,8 +190,7 @@ Browse all scraped sites. Each card shows:
 - Entity tags (crypto wallets, PGP keys, emails, onion links)
 - AI analysis (if LLM enabled)
 
-![Gallery View](docs/scree<img width="1884" height="784" alt="Screenshot 2026-03-20 123109" src="https://github.com/user-attachments/assets/2d1e7bff-873c-4066-8eca-b6eea543d9b6" />
-nshots/gallery.png)
+<img width="1884" height="784" alt="Screenshot 2026-03-20 123109" src="https://github.com/user-attachments/assets/cf22c29c-7534-4c27-820b-fe1b7e899d62" />
 
 ### 🔍 Search
 Query multiple .onion search engines, view results inline, scrape them with one click.
