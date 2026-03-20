@@ -95,7 +95,7 @@ Search multiple .onion search engines at once:
 
 Results are deduplicated and can be auto-scraped with one click.
 
-![Search Results](docs/screenshots/search-results.png)
+<img width="1570" height="837" alt="Screenshot 2026-03-20 124115" src="https://github.com/user-attachments/assets/5658d16c-6cc5-4e59-82cf-e430e4100464" />
 
 ## Configuration
 
