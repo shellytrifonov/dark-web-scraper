@@ -42,8 +42,6 @@ Wait ~2 minutes for Tor to bootstrap, then open:
 - **API docs**: http://localhost:8000/docs
 - **Flower**: http://localhost:5555 (Celery monitoring)
 
-![Scraper Control](docs/screenshots/scraper-control.png)
-
 ## Features
 
 ### 1. Smart Scraping Strategy
@@ -67,8 +65,6 @@ If you set `LLM_API_KEY` in `.env`, it also sends the page to OpenAI for:
 - One-sentence summary
 - Legitimacy score (0-100)
 - Category (Market, Forum, News, etc.)
-
-![Entity Tags](docs/screenshots/entity-tags.png)
 
 ### 3. Site Pulse Monitoring
 
@@ -194,7 +190,8 @@ Browse all scraped sites. Each card shows:
 - Entity tags (crypto wallets, PGP keys, emails, onion links)
 - AI analysis (if LLM enabled)
 
-![Gallery View](docs/screenshots/gallery.png)
+![Gallery View](docs/scree<img width="1884" height="784" alt="Screenshot 2026-03-20 123109" src="https://github.com/user-attachments/assets/2d1e7bff-873c-4066-8eca-b6eea543d9b6" />
+nshots/gallery.png)
 
 ### 🔍 Search
 Query multiple .onion search engines, view results inline, scrape them with one click.
