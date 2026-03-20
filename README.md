@@ -75,7 +75,8 @@ Track .onion sites over time:
 - Stores version history with size deltas
 - Visual uptime bar in the dashboard
 
-![Monitor Tab](docs/screenshots/monitor-tab.png)
+![Monitor Tab](docs/screenshots/monitor-t<img width="1499" height="534" alt="Screenshot 2026-03-20 123311" src="https://github.com/user-attachments/assets/ead3cd2d-dc7f-4311-8bce-91c5235d16c1" />
+ab.png)
 
 ### 4. Tor Circuit Rotation
 
