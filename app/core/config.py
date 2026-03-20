@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     TOR_PROXY_HOST: str = "tor-proxy"
     TOR_SOCKS_PORT: int = 9050
     TOR_HTTP_PORT: int = 8118
+    TOR_CONTROL_PORT: int = 9051
+    TOR_CONTROL_PASSWORD: str = "darkweb_tor_pass"
 
     # API Settings
     API_SECRET_KEY: str = "your-super-secret-key-change-in-production"

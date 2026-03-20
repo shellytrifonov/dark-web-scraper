@@ -21,6 +21,7 @@ from app.services.selenium_scraper import (
 from app.services.smart_scraper import SmartScraper, ScrapeEngine
 from app.services.search_engines import search_dark_web, SEARCH_ENGINES
 from app.services.entity_extractor import EntityExtractor
+from app.services.tor_circuit import rotate_tor_circuit
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,10 @@ def scrape_url_task(
             )
             session.add(job)
         session.commit()
+
+        # Rotate Tor circuit for a fresh IP before scraping
+        if use_tor:
+            rotate_tor_circuit()
 
         scraper = SmartScraper(
             selenium_hub_url=settings.SELENIUM_HUB_URL,
@@ -334,6 +339,9 @@ def search_dark_web_task(
             session.add(job)
         session.commit()
 
+        # Rotate Tor circuit for a fresh IP before searching
+        rotate_tor_circuit()
+
         scraper = SeleniumScraper(
             selenium_hub_url=settings.SELENIUM_HUB_URL,
             use_tor=True,
@@ -510,6 +518,10 @@ def monitor_site_task(
         if not monitor or not monitor.is_active:
             logger.info(f"Monitor {monitor_id} inactive or missing, skipping")
             return {"success": False, "reason": "monitor_inactive"}
+
+        # Rotate Tor circuit for a fresh IP before monitoring
+        if use_tor:
+            rotate_tor_circuit()
 
         # Scrape the site
         scraper = SmartScraper(

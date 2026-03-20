@@ -52,9 +52,12 @@ services:
     restart: unless-stopped
     environment:
       - LOCATION=US
+      - TOR_NewCircuitPeriod=0
+      - PASSWORD=${TOR_CONTROL_PASSWORD:-darkweb_tor_pass}
     ports:
       - "8118:8118"   # Privoxy HTTP proxy
       - "9050:9050"   # Tor SOCKS proxy
+      - "9051:9051"   # Tor Control Port
     healthcheck:
       test: ["CMD-SHELL", "curl -sf --socks5 localhost:9050 https://check.torproject.org/api/ip || exit 1"]
       interval: 10s
@@ -134,6 +137,8 @@ services:
       - TOR_PROXY_HOST=tor-proxy
       - TOR_SOCKS_PORT=9050
       - TOR_HTTP_PORT=8118
+      - TOR_CONTROL_PORT=9051
+      - TOR_CONTROL_PASSWORD=${TOR_CONTROL_PASSWORD:-darkweb_tor_pass}
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - http_proxy=http://tor-proxy:8118
