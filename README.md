@@ -190,7 +190,7 @@ Browse all scraped sites. Each card shows:
 - Entity tags (crypto wallets, PGP keys, emails, onion links)
 - AI analysis (if LLM enabled)
 
-<img width="1884" height="784" alt="Screenshot 2026-03-20 123109" src="https://github.com/user-attachments/assets/cf22c29c-7534-4c27-820b-fe1b7e899d62" />
+<img width="1562" height="859" alt="Screenshot 2026-03-20 124233" src="https://github.com/user-attachments/assets/7a1ffc04-16b6-41b7-81fc-7271b0c86a46" />
 
 ### 🔍 Search
 Query multiple .onion search engines, view results inline, scrape them with one click.
