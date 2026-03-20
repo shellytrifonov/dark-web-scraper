@@ -239,6 +239,10 @@ alembic upgrade head
 
 **Circuit rotation failing:** Verify `TOR_CONTROL_PASSWORD` matches in `.env` and `docker-compose.yml`. Check port 9051 is exposed.
 
+## Disclaimer
+
+This project is provided strictly for lawful research. You are solely responsible for how you use it. Accessing dark web content may be illegal in your jurisdiction, and sending sensitive data to third-party APIs (including LLMs) can expose information outside your control. Use at your own risk and make sure you comply with local laws, institutional policies, and any API terms of service.
+
 ## License
 
 MIT
