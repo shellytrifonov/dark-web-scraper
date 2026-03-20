@@ -2,7 +2,8 @@
 
 Full-stack scraping platform for .onion sites with built-in anonymity, entity extraction, and uptime monitoring. Runs everything in Docker — no manual Tor setup needed.
 
-![Dashboard Overview](docs/screenshots/dashboard.png)
+![Dashboard Overview](docs/s<img width="1908" height="805" alt="Screenshot 2026-03-20 120845" src="https://github.com/user-attachments/assets/2745feaa-3547-40d0-ad7f-5a6fe7805a73" />
+creenshots/dashboard.png)
 
 ## What it does
 
