@@ -14,8 +14,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-darkweb_scraper}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-darkweb} -d ${POSTGRES_DB:-darkweb_scraper}"]
       interval: 10s
@@ -31,8 +29,6 @@ services:
     image: redis:7-alpine
     container_name: darkweb_redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -54,10 +50,6 @@ services:
       - LOCATION=US
       - TOR_NewCircuitPeriod=0
       - PASSWORD=${TOR_CONTROL_PASSWORD:-darkweb_tor_pass}
-    ports:
-      - "8118:8118"   # Privoxy HTTP proxy
-      - "9050:9050"   # Tor SOCKS proxy
-      - "9051:9051"   # Tor Control Port
     healthcheck:
       test: ["CMD-SHELL", "curl -sf --socks5 localhost:9050 https://check.torproject.org/api/ip || exit 1"]
       interval: 10s
@@ -80,8 +72,7 @@ services:
       - SE_NODE_OVERRIDE_MAX_SESSIONS=true
       - SE_VNC_NO_PASSWORD=1
     ports:
-      - "4444:4444"   # Selenium Grid Hub
-      - "7900:7900"   # noVNC (for debugging)
+      - "127.0.0.1:7900:7900"   # noVNC (localhost only, use SSH tunnel)
     networks:
       - darkweb_network
 
@@ -196,7 +187,7 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
     ports:
-      - "5555:5555"
+      - "127.0.0.1:5555:5555"
     depends_on:
       redis:
         condition: service_healthy
